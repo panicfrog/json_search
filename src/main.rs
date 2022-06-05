@@ -1,4 +1,3 @@
-
 ///   ## json查询工具：
 ///   功能：
 ///   - [ ] 精确匹配 如 {"a": 10}  $: jsh a  结果为10
@@ -18,6 +17,7 @@ use simd_json::ValueAccess;
 
 use pest::{Parser};
 use pest::iterators::Pairs;
+use crate::SearchValue::{ArrayIndex, ObjectKey};
 
 #[macro_use]
 extern crate pest_derive;
@@ -63,19 +63,42 @@ fn main() {
         println!("{:?}: {:?}", k, v);
      }
     let c = v.as_object().unwrap().get("a").as_object().unwrap().get("b").unwrap().get("c").unwrap().as_i64().unwrap();
-    println!("{:?}\n -------------- ", c);
     let pairs = parse_search(".key.b[10].是.abc[20][10]").unwrap();
-    for p in pairs {
-        match p.as_rule() {
-            Rule::array_index | Rule::object_key => {
-                let v2 = p.clone().into_inner().peekable().peek().unwrap().as_str().to_string();
-                println!("{:?}: {}",p.as_rule(),  v2);
-            }
-            _ => {
-                println!("{:?}: {}", p.as_rule(), p.as_str());
-            }
-        }
+    let search = SearchRules(pairs);
+    for i in search {
+       println!("{:?}", i);
     }
 }
 
+#[derive(Debug)]
+enum SearchValue {
+    ArrayIndex(usize),
+    ObjectKey(String),
+}
+
+struct SearchRules<'a>(Pairs<'a, Rule>);
+
+impl<'a> Iterator for SearchRules<'a> {
+     type Item = SearchValue;
+    fn next(&mut self) -> Option<Self::Item> {
+        let p = self.0.next()?;
+        let rule = p.as_rule();
+        if  rule != Rule::array_index && rule != Rule::object_key {
+            return None;
+        }
+        let v = p.clone()
+            .into_inner()
+            .peekable()
+            .peek()
+            .unwrap()
+            .as_str()
+            .to_string();
+        match p.as_rule() {
+            Rule::array_index => Some(ArrayIndex(v.parse::<usize>().unwrap())),
+            Rule::object_key => Some(ObjectKey(v)),
+            _ => panic!("something wrong case by is neither array or object"),
+        }
+    }
+
+}
 
