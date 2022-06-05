@@ -52,17 +52,31 @@ fn parse_search(rule: &str) -> Result<Pairs<Rule>, pest::error::Error<Rule>> {
     SearchParser::parse(Rule::search, rule)
 }
 
-fn main() {
-    // let args = Args::parse();
-    // println!("{:?}", args);
-
+fn read_file(path: &str) -> Result<Vec<u8>, std::io::Error> {
     let mut vec = Vec::new();
-    File::open("./some.json").unwrap().read_to_end(&mut vec).unwrap();
-    let v = simd_json::to_owned_value(&mut vec).unwrap();
-     for (k, v) in v.as_object().unwrap() {
-        println!("{:?}: {:?}", k, v);
-     }
-    let c = v.as_object().unwrap().get("a").as_object().unwrap().get("b").unwrap().get("c").unwrap().as_i64().unwrap();
+    let mut file = File::open(path)?;
+    file.read_to_end(&mut vec)?;
+    Ok(vec)
+}
+
+fn main() {
+    let args: Args = Args::parse();
+
+   match read_file(&args.json) {
+       Ok(mut vec) => {
+           let v = simd_json::to_owned_value(&mut vec).unwrap();
+           for (k, v) in v.as_object().unwrap() {
+               println!("{:?}: {:?}", k, v);
+           }
+           let c = v.as_object().unwrap().get("a").as_object().unwrap().get("b").unwrap().get("c").unwrap().as_i64().unwrap();
+       },
+       Err(e) => {
+           println!("{:?}", e.to_string());
+           return;
+       }
+   }
+
+
     let pairs = parse_search(".key.b[10].是.abc[20][10]").unwrap();
     let search = SearchRules(pairs);
     for i in search {
