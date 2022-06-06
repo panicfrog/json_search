@@ -24,6 +24,7 @@ use crate::SearchValue::{ArrayIndex, ObjectKey};
 
 #[macro_use]
 extern crate pest_derive;
+extern crate core;
 
 #[derive(Parser)]
 #[grammar = "search.pest"]
@@ -51,21 +52,18 @@ enum Source {
     Content,
 }
 
-fn parse_search(rule: &str) -> Result<Pairs<Rule>> {
-    SearchParser::parse(Rule::search, rule).with_context(|| { format!("parse rule error: {}", rule) })
-}
-
-fn read_file(path: &str) -> Result<Vec<u8>> {
-    let mut vec = Vec::new();
-    let mut file = File::open(path)?;
-    file.read_to_end(&mut vec)?;
-    Ok(vec)
-}
-
 #[derive(Debug)]
 enum SearchValue {
     ArrayIndex(usize),
     ObjectKey(String),
+}
+
+#[derive(Error, Debug)]
+enum SearchError {
+    #[error("item you searched is not exit")]
+    NoExit,
+    #[error("invalid type")]
+    InvalidType,
 }
 
 struct SearchRules<'a>(Pairs<'a, Rule>);
@@ -93,13 +91,18 @@ impl<'a> Iterator for SearchRules<'a> {
     }
 }
 
-#[derive(Error, Debug)]
-enum SearchError {
-    #[error("item you searched is not exit")]
-    NoExit,
-    #[error("invalid type")]
-    InvalidType,
+
+fn parse_search(rule: &str) -> Result<Pairs<Rule>> {
+    SearchParser::parse(Rule::search, rule).with_context(|| { format!("parse rule error: {}", rule) })
 }
+
+fn read_file(path: &str) -> Result<Vec<u8>> {
+    let mut vec = Vec::new();
+    let mut file = File::open(path)?;
+    file.read_to_end(&mut vec)?;
+    Ok(vec)
+}
+
 
 fn match_rule<'a>(rule: &SearchValue, value: &'a OwnedValue) -> Result<&'a OwnedValue> {
    match rule {
@@ -162,4 +165,62 @@ fn main() {
     }
 }
 
+#[cfg(test)]
+mod test {
+    use crate::{parse_search, search, SearchRules};
 
+    #[test]
+    fn test_search() {
+        let mut b = br#"{ "a":{ "b":{ "c":10 } }, "a1":[{ "b1":{ "c1":"c1" } }, { "b2":{ "c2":"c2" } } ] }"#.to_vec();
+        match parse_search(".a.b.c") {
+            Ok(rule) => {
+                let mut search_rules = SearchRules(rule);
+                match search(&mut b, &mut search_rules) {
+                    Ok(v) => println!(".a.b.c : {}", v),
+                    Err(e) => panic!("{}", e),
+                }
+            },
+            Err(e) => {
+                panic!("{}", e);
+            }
+        }
+        match parse_search(".a1[0]") {
+            Ok(rule) => {
+                let mut search_rules = SearchRules(rule);
+                match search(&mut b, &mut search_rules) {
+                    Ok(v) => println!(".a1[0] : {}", v),
+                    Err(e) => panic!("{}", e),
+                }
+            },
+            Err(e) => {
+                panic!("{}", e);
+            }
+        }
+
+        match parse_search(".a1[0].b1") {
+            Ok(rule) => {
+                let mut search_rules = SearchRules(rule);
+                match search(&mut b, &mut search_rules) {
+                    Ok(v) => println!(".a1[0].b1 : {}", v),
+                    Err(e) => panic!("{}", e),
+                }
+            },
+            Err(e) => {
+                panic!("{}", e);
+            }
+        }
+
+        match parse_search(".a1[0].b1.c1") {
+            Ok(rule) => {
+                let mut search_rules = SearchRules(rule);
+                match search(&mut b, &mut search_rules) {
+                    Ok(v) => println!(".a1[0].b1.c1 : {}", v),
+                    Err(e) => panic!("{}", e),
+                }
+            },
+            Err(e) => {
+                panic!("{}", e);
+            }
+        }
+    }
+}
