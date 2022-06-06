@@ -1,4 +1,3 @@
-use std::fmt::{Display, Formatter};
 ///   ## json查询工具：
 ///   功能：
 ///   - [ ] 精确匹配 如 {"a": 10}  $: jsh a  结果为10
@@ -10,14 +9,17 @@ use std::fmt::{Display, Formatter};
 ///
 
 use clap::{Parser as ClapParser, ArgEnum};
-use simd_json;
 
 use std::fs::{File};
 use std::io::Read;
-use simd_json::{Array, Value, ValueAccess};
+use simd_json::{self, Array, Value, ValueAccess, value::owned::Value as OwnedValue};
 
 use pest::{Parser};
 use pest::iterators::Pairs;
+
+use anyhow::{Result, Context, anyhow};
+use thiserror::Error;
+
 use crate::SearchValue::{ArrayIndex, ObjectKey};
 
 #[macro_use]
@@ -49,11 +51,11 @@ enum Source {
     Content,
 }
 
-fn parse_search(rule: &str) -> Result<Pairs<Rule>, pest::error::Error<Rule>> {
-    SearchParser::parse(Rule::search, rule)
+fn parse_search(rule: &str) -> Result<Pairs<Rule>> {
+    SearchParser::parse(Rule::search, rule).with_context(|| { format!("parse rule error: {}", rule) })
 }
 
-fn read_file(path: &str) -> Result<Vec<u8>, std::io::Error> {
+fn read_file(path: &str) -> Result<Vec<u8>> {
     let mut vec = Vec::new();
     let mut file = File::open(path)?;
     file.read_to_end(&mut vec)?;
@@ -91,41 +93,41 @@ impl<'a> Iterator for SearchRules<'a> {
     }
 }
 
+#[derive(Error, Debug)]
 enum SearchError {
-    NoExit, InvalidType,
+    #[error("item you searched is not exit")]
+    NoExit,
+    #[error("invalid type")]
+    InvalidType,
 }
 
-impl Display for SearchError  {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-       match self {
-           SearchError::NoExit => {
-               write!(f, "item you searched is not exit")
-           },
-           SearchError::InvalidType => {
-               write!(f, "invalid type")
-           }
-       }
-    }
-}
-
-fn match_rule<'a>(rule: &SearchValue, value: &'a simd_json::value::owned::Value) -> Result<&'a simd_json::value::owned::Value, SearchError> {
+fn match_rule<'a>(rule: &SearchValue, value: &'a OwnedValue) -> Result<&'a OwnedValue> {
    match rule {
        SearchValue::ArrayIndex(i)  => {
            if value.is_array() {
-               value.as_array().unwrap().get(i.clone()).ok_or(SearchError::NoExit)
+               value.as_array().unwrap().get(i.clone()).with_context(|| {SearchError::NoExit})
            } else {
-              Err(SearchError::InvalidType)
+              Err(anyhow!(SearchError::InvalidType))
            }
 
        },
        SearchValue::ObjectKey(k) => {
            if value.is_object() {
-               value.as_object().unwrap().get(k).ok_or(SearchError::NoExit)
+               value.as_object().unwrap().get(k).with_context(|| {SearchError::NoExit})
            } else {
-               Err(SearchError::InvalidType)
+               Err(anyhow!(SearchError::InvalidType))
            }
        }
    }
+}
+
+fn search(mut bytes: &mut Vec<u8>, rules: &mut SearchRules) -> Result<OwnedValue> {
+    let v = simd_json::to_owned_value(&mut bytes).unwrap();
+    let mut _v = &v;
+    while let Some(r) = rules.next() {
+        _v = match_rule(&r, _v)?;
+    }
+    Ok(_v.clone())
 }
 
 fn main() {
@@ -154,22 +156,10 @@ fn main() {
     let mut bytes = bytes.unwrap();
     let mut rules = SearchRules( rules.unwrap());
 
-    let v = simd_json::to_owned_value(&mut bytes).unwrap();
-
-    let mut _v = &v;
-
-    while let Some(r) = rules.next() {
-        match  match_rule(&r, _v) {
-            Ok(r) => {
-               _v = r;
-            },
-            Err(e) => {
-                println!("{}", e);
-                break;
-            }
-        }
+    match search(&mut bytes, &mut rules) {
+        Ok(v) => println!("{}",v),
+        Err(e) => println!("{}",e),
     }
-    println!("{}", _v);
 }
 
 
