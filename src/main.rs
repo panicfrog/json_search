@@ -146,14 +146,14 @@ fn main() {
     };
 
     if bytes.is_err() {
-        println!("{:?}", bytes.unwrap_err().to_string());
+        println!("{}", bytes.unwrap_err().to_string());
         return;
     }
 
     let rules = parse_search(&args.rule);
 
     if rules.is_err() {
-        println!("{:?}", rules.unwrap_err().to_string());
+        println!("{}", rules.unwrap_err().to_string());
         return;
     }
     let mut bytes = bytes.unwrap();
