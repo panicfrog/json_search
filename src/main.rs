@@ -9,6 +9,7 @@
 ///
 
 use clap::{Parser as ClapParser, ArgEnum};
+use colored::Colorize;
 
 use std::fs::{File};
 use std::io::Read;
@@ -146,22 +147,22 @@ fn main() {
     };
 
     if bytes.is_err() {
-        println!("{}", bytes.unwrap_err().to_string());
+        println!("{}", bytes.unwrap_err().to_string().red());
         return;
     }
 
     let rules = parse_search(&args.rule);
 
     if rules.is_err() {
-        println!("{}", rules.unwrap_err().to_string());
+        println!("{}", rules.unwrap_err().to_string().red());
         return;
     }
     let mut bytes = bytes.unwrap();
     let mut rules = SearchRules( rules.unwrap());
 
     match search(&mut bytes, &mut rules) {
-        Ok(v) => println!("{}",v),
-        Err(e) => println!("{}",e),
+        Ok(v) => println!("{}",v.to_string().green()),
+        Err(e) => println!("{}",e.to_string().red()),
     }
 }
 
