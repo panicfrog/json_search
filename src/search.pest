@@ -1,8 +1,9 @@
 search = _{ SOI  ~ (object_key | array_index )+ ~ EOI }
-object_key = { "." ~ key }
-array_index = { "[" ~ index ~ "]"}
-key = @{ char+ }
+object_key = { "." ~ (key | any) }
+array_index = { "[" ~ (index | any) ~ "]"}
 char = { !("[" | "]" | "") ~ ANY | LETTER | ASCII_DIGIT | "-" | "_" | "\\." }
+any = @{"*"}
+key = @{ char+ }
 index = @{
     ("0" | ASCII_NONZERO_DIGIT ~ ASCII_DIGIT*)
 }

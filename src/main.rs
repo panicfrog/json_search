@@ -31,12 +31,17 @@ extern crate core;
 #[grammar = "search.pest"]
 struct SearchParser;
 
+/// search from json
 #[derive(ClapParser, Debug)]
 #[clap(author, version, about, long_about = None)]
 struct Args {
     /// rule for search from json
     #[clap(short, long)]
     rule: String,
+
+    /// filter for value
+    #[clap(arg_enum, default_value_t = Filter::Any)]
+    filter: Filter,
 
     /// source of json
     #[clap(short, long)]
@@ -46,6 +51,13 @@ struct Args {
     #[clap(arg_enum, default_value_t = Source::File)]
     source: Source,
 }
+
+#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ArgEnum, Debug)]
+enum Filter {
+    Any,
+    Regex(String)
+}
+
 
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ArgEnum, Debug)]
 enum Source {
