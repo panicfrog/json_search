@@ -21,7 +21,7 @@ use pest::iterators::Pairs;
 use anyhow::{Result, Context, anyhow};
 use thiserror::Error;
 
-use crate::SearchValue::{ArrayIndex, ObjectKey};
+use crate::SearchValue::{ArrayAny, ArrayIndex, ObjectAny, ObjectKey};
 
 #[macro_use]
 extern crate pest_derive;
@@ -55,7 +55,7 @@ struct Args {
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ArgEnum, Debug)]
 enum Filter {
     Any,
-    Regex(String)
+    Regex
 }
 
 
@@ -69,6 +69,8 @@ enum Source {
 enum SearchValue {
     ArrayIndex(usize),
     ObjectKey(String),
+    ArrayAny,
+    ObjectAny,
 }
 
 #[derive(Error, Debug)]
@@ -84,6 +86,7 @@ struct SearchRules<'a>(Pairs<'a, Rule>);
 impl<'a> Iterator for SearchRules<'a> {
     type Item = SearchValue;
     fn next(&mut self) -> Option<Self::Item> {
+        /// TODO: 添加匹配any的逻辑
         let p = self.0.next()?;
         let rule = p.as_rule();
         if  rule != Rule::array_index && rule != Rule::object_key {
@@ -96,9 +99,24 @@ impl<'a> Iterator for SearchRules<'a> {
             .unwrap()
             .as_str()
             .to_string();
+        println!("{:?}", p);
         match p.as_rule() {
-            Rule::array_index => Some(ArrayIndex(v.parse::<usize>().unwrap())),
-            Rule::object_key => Some(ObjectKey(v)),
+            Rule::array_index => {
+                println!("{:?}", v);
+                if v == "*" {
+                    Some(ArrayAny)
+                } else {
+                    Some(ArrayIndex(v.parse::<usize>().unwrap()))
+                }
+            },
+            Rule::object_key => {
+                println!("{:?}", v);
+                if v == "*" {
+                    Some(ObjectAny)
+                } else {
+                    Some(ObjectKey(v))
+                }
+            },
             _ => panic!("something wrong case by is neither array or object"),
         }
     }
@@ -119,7 +137,7 @@ fn read_file(path: &str) -> Result<Vec<u8>> {
 
 fn match_rule<'a>(rule: &SearchValue, value: &'a OwnedValue) -> Result<&'a OwnedValue> {
    match rule {
-       SearchValue::ArrayIndex(i)  => {
+       ArrayIndex(i)  => {
            if value.is_array() {
                value.as_array().unwrap().get(i.clone()).with_context(|| {SearchError::NoExit})
            } else {
@@ -127,9 +145,23 @@ fn match_rule<'a>(rule: &SearchValue, value: &'a OwnedValue) -> Result<&'a Owned
            }
 
        },
-       SearchValue::ObjectKey(k) => {
+       ObjectKey(k) => {
            if value.is_object() {
                value.as_object().unwrap().get(k).with_context(|| {SearchError::NoExit})
+           } else {
+               Err(anyhow!(SearchError::InvalidType))
+           }
+       },
+       ArrayAny => {
+           if value.is_array() {
+               value.as_array().unwrap()
+           } else {
+               Err(anyhow!(SearchError::InvalidType))
+           }
+       },
+       ObjectAny => {
+           if value.is_object() {
+               value.as_object()
            } else {
                Err(anyhow!(SearchError::InvalidType))
            }
@@ -184,7 +216,33 @@ mod test {
 
     #[test]
     fn test_search() {
-        let mut b = br#"{ "a":{ "b":{ "c":10 } }, "a1":[{ "b1":{ "c1":"c1" } }, { "b2":{ "c2":"c2" } } ] }"#.to_vec();
+        let mut b = br#"{
+    "a":{
+        "b":{
+            "c":10
+        }
+    },
+    "a1":[
+        {
+            "b1":{
+                "c1":"c1"
+            }
+        },
+        {
+            "b2":{
+                "c2":"c2"
+            }
+        }
+    ],
+    "a2":[
+        "1",
+        "2",
+        "3"
+    ],
+    "a3":{
+        "b1":"some thing"
+    }
+}"#.to_vec();
         match parse_search(".a.b.c") {
             Ok(rule) => {
                 let mut search_rules = SearchRules(rule);
@@ -215,6 +273,19 @@ mod test {
                 let mut search_rules = SearchRules(rule);
                 match search(&mut b, &mut search_rules) {
                     Ok(v) => println!(".a1[0].b1 : {}", v),
+                    Err(e) => panic!("{}", e),
+                }
+            },
+            Err(e) => {
+                panic!("{}", e);
+            }
+        }
+
+        match parse_search(".a2[*]") {
+            Ok(rule) => {
+                let mut search_rules = SearchRules(rule);
+                match search(&mut b, &mut search_rules) {
+                    Ok(v) => println!(".a1[0].b1.c1 : {}", v),
                     Err(e) => panic!("{}", e),
                 }
             },
